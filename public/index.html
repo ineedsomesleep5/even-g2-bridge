@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G2 Bridge Mobile Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; text-align: center; }
+        input { padding: 15px; width: 90%; margin: 10px 0; font-size: 16px; }
+        button { padding: 15px 30px; background: #007bff; color: white; border: none; font-size: 18px; width: 100%; }
+        #log { margin-top: 20px; text-align: left; background: #f4f4f4; padding: 10px; font-family: monospace; white-space: pre-wrap; }
+        .success { color: green; } .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>👓 Bridge Tester</h1>
+    <p>Paste your Vercel URL below:</p>
+    <input type="text" id="url" value="/v1/chat/completions">
+    <button onclick="test()">Test Connection</button>
+    <div id="log">Logs will appear here...</div>
+
+    <script>
+        async function test() {
+            const path = document.getElementById('url').value;
+            const log = document.getElementById('log');
+            log.innerHTML = "Connecting...";
+
+            try {
+                const res = await fetch(path, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: "gpt-3.5",
+                        messages: [{ role: "user", content: "Hello from phone!" }]
+                    })
+                });
+                const text = await res.text();
+                if (res.ok) log.innerHTML = "<b class='success'>SUCCESS!</b>Response:\n" + text;
+                else log.innerHTML = "<b class='error'>ERROR " + res.status + "</b>\n" + text;
+            } catch (e) {
+                log.innerHTML = "<b class='error'>NETWORK ERROR</b>\n" + e.message;
+            }
+        }
+    </script>
+</body>
+</html>
