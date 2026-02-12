@@ -6,12 +6,13 @@ import time
 app = Flask(__name__)
 
 # Configure Gemini
+# Note: Set GEMINI_API_KEY in Vercel Environment Variables
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 MODEL_NAME = "gemini-2.0-flash"
 
 def get_gemini_response(prompt):
     if not GEMINI_API_KEY:
-        return "Error: GEMINI_API_KEY not configured in Vercel Settings."
+        return "Error: GEMINI_API_KEY not configured."
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(MODEL_NAME)
@@ -28,6 +29,9 @@ def health_check():
 def chat_completions():
     try:
         data = request.json
+        if not data:
+             return jsonify({"error": "Invalid JSON"}), 400
+             
         messages = data.get('messages', [])
         
         last_user_message = "Hello"
@@ -38,10 +42,11 @@ def chat_completions():
         
         response_text = get_gemini_response(last_user_message)
         
+        current_time = int(time.time())
         return jsonify({
-            "id": f"chatcmpl-{int(time.time())}",
+            "id": f"chatcmpl-{current_time}",
             "object": "chat.completion",
-            "created": int(time.time()),
+            "created": current_time,
             "model": MODEL_NAME,
             "choices": [{
                 "index": 0,
@@ -55,6 +60,4 @@ def chat_completions():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Vercel requires the app to be available as a variable
-# It automatically handles the execution, no need for app.run()
-
+# Vercel looks for 'app'
