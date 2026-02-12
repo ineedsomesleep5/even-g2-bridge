@@ -5,8 +5,15 @@ import time
 
 app = Flask(__name__)
 
+# Basic CORS headers for all responses
+@app.after_request
+def after_request(response):
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
+
 # Configure Gemini
-# Note: Set GEMINI_API_KEY in Vercel Environment Variables
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 MODEL_NAME = "gemini-2.0-flash"
 
@@ -25,8 +32,12 @@ def get_gemini_response(prompt):
 def health_check():
     return "Even Realities G2 Bridge (Vercel) is Active", 200
 
-@app.route('/v1/chat/completions', methods=['POST'])
+# Handle OPTIONS requests for preflight checks
+@app.route('/v1/chat/completions', methods=['POST', 'OPTIONS'])
 def chat_completions():
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
     try:
         data = request.json
         if not data:
@@ -59,5 +70,3 @@ def chat_completions():
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-# Vercel looks for 'app'
