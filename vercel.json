@@ -1,8 +1,12 @@
 {
-    "rewrites": [
+    "rewrites": [ ... ],
+    "headers": [
         {
-            "source": "/(.*)",
-            "destination": "/api/index.py"
+            "match": "/(.*)",
+            "headers": [
+                { "key": "Access-Control-Allow-Origin", "value": "*" },
+                ...
+            ]
         }
     ]
 }
