@@ -57,3 +57,4 @@ def chat_completions():
 
 # Vercel requires the app to be available as a variable
 # It automatically handles the execution, no need for app.run()
+
