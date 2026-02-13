@@ -4,6 +4,29 @@ export const config = {
   runtime: 'edge', 
 };
 
+// Helper function to search Brave
+async function braveSearch(query) {
+  const response = await fetch(
+    `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=3`,
+    {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': process.env.BRAVE_API_KEY
+      }
+    }
+  );
+  
+  if (!response.ok) {
+    throw new Error(`Brave Search failed: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  
+  // Extract relevant results
+  const results = data.web?.results?.slice(0, 3) || [];
+  return results.map(r => `${r.title}: ${r.description}`).join('\n');
+}
+
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -17,7 +40,7 @@ export default async function handler(req) {
   }
 
   if (req.method === 'GET') {
-    return new Response("VERIFIED: 2026 BRAIN ACTIVE 🌐 (Real Search Mode)", { status: 200 });
+    return new Response("VERIFIED: 2026 BRAIN ACTIVE 🌐 (Brave Search)", { status: 200 });
   }
 
   try {
@@ -28,73 +51,58 @@ export default async function handler(req) {
     const now = new Date();
     const dateStr = now.toLocaleString("en-US", { 
       timeZone: "America/Chicago",
-      year: 'numeric',
-      month: 'long', 
-      day: 'numeric',
-      weekday: 'long'
+      dateStyle: "full",
+      timeStyle: "short"
     });
 
-    // Gemini 3 Flash Preview
+    // Detect if this needs a search
+    const needsSearch = 
+      /what year|current year|today|date|who won|super bowl|score|latest|recent|news|current/i.test(lastMsg);
+
+    let searchResults = "";
+    
+    if (needsSearch) {
+      try {
+        searchResults = await braveSearch(lastMsg);
+      } catch (searchError) {
+        console.error('Search error:', searchError);
+        searchResults = "[Search failed - answering without search]";
+      }
+    }
+
     const model = genAI.getGenerativeModel({ 
       model: "gemini-3-flash-preview",
-      systemInstruction: `You are a HUD assistant providing real-time information.
-Current date: ${dateStr}
+      systemInstruction: `You are a concise HUD assistant.
+Current time: ${dateStr}
 
-CRITICAL RULES:
-1. For ANY question about current events, sports, news, dates, or facts: YOU MUST USE GOOGLE SEARCH
-2. NEVER answer from memory - always search first for factual questions
-3. Keep responses under 15 words
-4. Be direct and concise
-5. If you don't search when you should have, the user will get wrong information
-
-Questions that REQUIRE search:
-- "What year is it?" → Search current date
-- "Who won the Super Bowl?" → Search Super Bowl 2026 winner
-- "What's the date?" → Search today's date
-- "Who won [any game]?" → Search that game result
-- Any sports scores, news, or current events → ALWAYS SEARCH
-
-Do not make up answers. Do not answer from training data. Always search for facts.`
+Rules:
+- Keep all responses under 15 words
+- Be direct and factual
+- If search results are provided, use them as your primary source
+- Don't mention the search or say "according to"
+- Just give the answer`
     });
 
-    // FORCE Google Search grounding with aggressive settings
-    const result = await model.generateContent({
-      contents: [{ 
-        role: "user", 
-        parts: [{ text: `[REAL-TIME SEARCH REQUIRED] ${lastMsg}` }] 
-      }],
-      tools: [{
-        googleSearchRetrieval: {
-          dynamicRetrievalConfig: {
-            mode: "MODE_DYNAMIC",
-            dynamicThreshold: 0.1  // Very low threshold = search more often
-          }
-        }
-      }],
-      generationConfig: {
-        temperature: 0.3,  // Lower temperature = more factual
-      }
-    });
+    const prompt = searchResults 
+      ? `Search results for "${lastMsg}":\n${searchResults}\n\nBased on these results, answer the question in under 15 words:`
+      : lastMsg;
 
+    const result = await model.generateContent(prompt);
     const response = await result.response;
     let answer = response.text();
     
-    // ONLY basic cleanup - NO REPLACEMENTS, NO HARD-CODED ANSWERS
+    // Minimal cleanup
     answer = answer
       .replace(/```[\s\S]*?```/g, "")
       .replace(/\*\*/g, "")
+      .replace(/According to.*?[,:]/gi, "")
       .trim();
-
-    // If answer is empty, provide helpful message
-    if (!answer) {
-      answer = "Unable to retrieve information. Please try again.";
-    }
 
     return new Response(JSON.stringify({
       choices: [{ 
         message: { 
           role: "assistant", 
-          content: answer
+          content: answer || "Unable to answer"
         } 
       }]
     }), {
@@ -107,30 +115,15 @@ Do not make up answers. Do not answer from training data. Always search for fact
 
   } catch (error) {
     console.error('API Error:', error);
-    
-    // If grounding fails, inform user clearly
-    if (error.message.includes('grounding') || error.message.includes('search')) {
-      return new Response(JSON.stringify({ 
-        choices: [{
-          message: {
-            role: "assistant",
-            content: "Search unavailable. Enable search in API settings."
-          }
-        }]
-      }), { 
-        status: 200,
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
-      });
-    }
-
     return new Response(JSON.stringify({ 
-      error: error.message,
-      details: "Check Vercel logs for full error"
+      choices: [{
+        message: {
+          role: "assistant",
+          content: "Service error. Try again."
+        }
+      }]
     }), { 
-      status: 500,
+      status: 200,
       headers: { 
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*'
