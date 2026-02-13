@@ -17,7 +17,7 @@ export default async function handler(req) {
   }
 
   if (req.method === 'GET') {
-    return new Response("VERIFIED: 2026 BRAIN ACTIVE 🌐 (Gemini 3 Flash)", { status: 200 });
+    return new Response("VERIFIED: 2026 BRAIN ACTIVE 🌐 (Real Search Mode)", { status: 200 });
   }
 
   try {
@@ -37,75 +37,64 @@ export default async function handler(req) {
     // Gemini 3 Flash Preview
     const model = genAI.getGenerativeModel({ 
       model: "gemini-3-flash-preview",
-      systemInstruction: `CRITICAL CONTEXT:
-Today's date is ${dateStr}. Current year: ${now.getFullYear()}.
+      systemInstruction: `You are a HUD assistant providing real-time information.
+Current date: ${dateStr}
 
-IMPORTANT FACTS:
-- Year: ${now.getFullYear()}
-- Recent Super Bowl winner: New England Patriots defeated Seattle Seahawks
-- Patriots QB: Drake Maye, Seahawks QB: Sam Darnold
+CRITICAL RULES:
+1. For ANY question about current events, sports, news, dates, or facts: YOU MUST USE GOOGLE SEARCH
+2. NEVER answer from memory - always search first for factual questions
+3. Keep responses under 15 words
+4. Be direct and concise
+5. If you don't search when you should have, the user will get wrong information
 
-RULES:
-- Keep responses under 15 words
-- For current events/sports: search Google first
-- Never say "2024" or "Chiefs"
-- Be concise and natural`
+Questions that REQUIRE search:
+- "What year is it?" → Search current date
+- "Who won the Super Bowl?" → Search Super Bowl 2026 winner
+- "What's the date?" → Search today's date
+- "Who won [any game]?" → Search that game result
+- Any sports scores, news, or current events → ALWAYS SEARCH
+
+Do not make up answers. Do not answer from training data. Always search for facts.`
     });
 
-    // Try with grounding
-    let result;
-    try {
-      result = await model.generateContent({
-        contents: [{ 
-          role: "user", 
-          parts: [{ text: lastMsg }] 
-        }],
-        tools: [{
-          googleSearchRetrieval: {
-            dynamicRetrievalConfig: {
-              mode: "MODE_DYNAMIC",
-              dynamicThreshold: 0.3
-            }
+    // FORCE Google Search grounding with aggressive settings
+    const result = await model.generateContent({
+      contents: [{ 
+        role: "user", 
+        parts: [{ text: `[REAL-TIME SEARCH REQUIRED] ${lastMsg}` }] 
+      }],
+      tools: [{
+        googleSearchRetrieval: {
+          dynamicRetrievalConfig: {
+            mode: "MODE_DYNAMIC",
+            dynamicThreshold: 0.1  // Very low threshold = search more often
           }
-        }]
-      });
-    } catch (groundingError) {
-      // Fallback without grounding if not supported
-      console.log('Grounding not available, using standard generation');
-      result = await model.generateContent(lastMsg);
-    }
+        }
+      }],
+      generationConfig: {
+        temperature: 0.3,  // Lower temperature = more factual
+      }
+    });
 
     const response = await result.response;
     let answer = response.text();
     
-    // Clean up
+    // ONLY basic cleanup - NO REPLACEMENTS, NO HARD-CODED ANSWERS
     answer = answer
       .replace(/```[\s\S]*?```/g, "")
       .replace(/\*\*/g, "")
-      .replace(/2024/g, "2026")
-      .replace(/Chiefs/gi, "Patriots")
       .trim();
 
-    // Hard-coded fallbacks for accuracy
-    const lowerMsg = lastMsg.toLowerCase();
-    if (lowerMsg.includes('what year') || lowerMsg.includes('current year')) {
-      answer = "It's 2026";
-    } else if (lowerMsg.includes('super bowl') && (lowerMsg.includes('won') || lowerMsg.includes('winner'))) {
-      answer = "Patriots beat Seahawks in Super Bowl LX";
-    } else if (lowerMsg.match(/what.*date|today.*date|current date/)) {
-      const shortDate = now.toLocaleDateString("en-US", { 
-        month: "long", 
-        day: "numeric", 
-        year: "numeric" 
-      });
-      answer = shortDate;
+    // If answer is empty, provide helpful message
+    if (!answer) {
+      answer = "Unable to retrieve information. Please try again.";
     }
 
     return new Response(JSON.stringify({
       choices: [{ 
         message: { 
           role: "assistant", 
-          content: answer || "Processing..."
+          content: answer
         } 
       }]
     }), {
@@ -119,15 +108,17 @@ RULES:
   } catch (error) {
     console.error('API Error:', error);
     
-    // Provide helpful error message
-    if (error.message.includes('not found') || error.message.includes('404')) {
+    // If grounding fails, inform user clearly
+    if (error.message.includes('grounding') || error.message.includes('search')) {
       return new Response(JSON.stringify({ 
-        error: "Gemini 3 Flash Preview not available",
-        suggestion: "Check if your API key has access to preview models",
-        modelTried: "gemini-3-flash-preview",
-        details: error.message
+        choices: [{
+          message: {
+            role: "assistant",
+            content: "Search unavailable. Enable search in API settings."
+          }
+        }]
       }), { 
-        status: 500,
+        status: 200,
         headers: { 
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
@@ -137,7 +128,7 @@ RULES:
 
     return new Response(JSON.stringify({ 
       error: error.message,
-      stack: error.stack
+      details: "Check Vercel logs for full error"
     }), { 
       status: 500,
       headers: { 
