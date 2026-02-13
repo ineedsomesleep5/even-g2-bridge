@@ -1,11 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const config = {
-  runtime: 'edge', // Runs on the fastest servers
+  runtime: 'edge', 
 };
 
 export default async function handler(req) {
-  // 1. Handle "Pre-flight" checks (CORS)
+  // 1. Pre-flight Checks (CORS)
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -19,36 +19,41 @@ export default async function handler(req) {
 
   // 2. Health Check
   if (req.method === 'GET') {
-    return new Response("Gemini 2.0 Flash Bridge is Live! 🚀", { status: 200 });
+    return new Response("Gemini 2.0 Flash (Connected to Web) is Live! 🌐", { status: 200 });
   }
 
   try {
-    // 3. Setup Gemini 2.0 Flash
-    // Make sure your API Key is set in Vercel Settings
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     
-    // 4. Parse Incoming Data
     const data = await req.json();
     const messages = data.messages || [];
-    // Get the user's last message
     const lastMsg = messages.reverse().find(m => m.role === 'user')?.content || "Hello";
 
-    // 5. Ask Gemini (With a "HUD" System Prompt for speed)
+    // Get current date for context
+    const now = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
+
+    // 3. Ask Gemini WITH Google Search Tool
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash', 
+      
+      // ✅ THIS IS THE MAGIC LINE that gives it web access:
+      tools: [{ googleSearch: {} }],
+
       contents: [{ 
         role: "user", 
         parts: [{ 
-          text: `You are an AI assistant for smart glasses (HUD). 
+          text: `System: Current Date is ${now}.
+                 You are an AI assistant for smart glasses (HUD).
+                 If the user asks about current events, USE SEARCH to verify.
                  Keep your answer extremely concise, short, and conversational. 
-                 Do not use markdown formatting (no bold/italics). 
+                 Do not use markdown formatting. 
                  Max 2 sentences.
                  User asks: ${lastMsg}` 
         }] 
       }],
     });
 
-    // 6. Send Response back to Glasses
+    // 4. Send Response
     const answer = response.text; 
 
     return new Response(JSON.stringify({
