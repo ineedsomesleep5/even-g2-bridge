@@ -5,6 +5,7 @@ export const config = {
 };
 
 export default async function handler(req) {
+  // 1. Handle CORS and Health Checks
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -17,7 +18,7 @@ export default async function handler(req) {
   }
 
   if (req.method === 'GET') {
-    return new Response("Gemini Bridge (Silent Search) is Live! 🤫", { status: 200 });
+    return new Response("Gemini 2.0 Flash (Live Search Enforced) is Active! 🌐", { status: 200 });
   }
 
   try {
@@ -27,23 +28,24 @@ export default async function handler(req) {
     const messages = data.messages || [];
     const lastMsg = messages.reverse().find(m => m.role === 'user')?.content || "Hello";
 
-    // Get current date
+    // ✅ Inject real-time date for context
     const now = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash', 
       
-      // ✅ Enable Search
+      // ✅ Enables Google Search Grounding
       tools: [{ googleSearch: {} }],
 
-      // ✅ SYSTEM INSTRUCTION: This forces the AI to hide the tool code
+      // ✅ Strict System Instructions to prevent "guessing"
       systemInstruction: `
-        Current Date: ${now}.
-        You are a HUD assistant.
-        1. If you need to verify facts (like sports/news), use Google Search silently.
-        2. NEVER output JSON, XML, or "Tool Code". 
-        3. ONLY output the final plain text answer.
-        4. Keep it under 20 words.
+        Current Date/Time: ${now}.
+        You are an AI assistant for smart glasses (HUD).
+        RULES:
+        1. If the user asks about sports, news, weather, or current events, YOU MUST USE THE GOOGLE SEARCH TOOL.
+        2. DO NOT answer from your memory for recent events (like Super Bowls or dates).
+        3. Never output JSON, technical tool-code, or markdown (no bold/italics).
+        4. Keep your final answer conversational and under 15 words.
       `,
 
       contents: [{ 
@@ -52,19 +54,15 @@ export default async function handler(req) {
       }],
     });
 
-    // ✅ CLEANER: This strips out any accidental code blocks
+    // ✅ Safety Cleaner: Removes JSON or tool code if the AI leaks it
     let answer = response.text;
-    
-    // Safety: If the AI sends raw code, this removes it
     if (answer) {
-        answer = answer.replace(/```[\s\S]*?```/g, "").trim(); // Remove code blocks
-        answer = answer.replace(/\{"function_call":[\s\S]*?\}/g, "").trim(); // Remove JSON artifacts
+        answer = answer.replace(/```[\s\S]*?```/g, "").trim();
+        answer = answer.replace(/\{"function_call":[\s\S]*?\}/g, "").trim();
+        answer = answer.replace(/\{"reply":[\s\S]*?\}/g, "").trim();
     }
 
-    // Fallback if search failed to generate text
-    if (!answer) {
-        answer = "I found the info but couldn't summarize it. Try asking again.";
-    }
+    if (!answer) answer = "Searching... please try that question again.";
 
     return new Response(JSON.stringify({
       choices: [{
@@ -76,10 +74,9 @@ export default async function handler(req) {
     });
 
   } catch (error) {
-    // If it crashes, tell the user why
     return new Response(JSON.stringify({
       choices: [{
-        message: { role: "assistant", content: "Search Error: " + error.message.substring(0, 50) }
+        message: { role: "assistant", content: "System Error: " + error.message.substring(0, 40) }
       }]
     }), { status: 200 });
   }
