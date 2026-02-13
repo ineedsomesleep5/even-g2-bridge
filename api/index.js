@@ -5,7 +5,6 @@ export const config = {
 };
 
 export default async function handler(req) {
-  // 1. Handle CORS and Health Checks
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -17,67 +16,48 @@ export default async function handler(req) {
     });
   }
 
+  // ✅ DEBUG TEST: Open your Vercel URL in a browser. 
+  // It should say "VERIFIED: 2026 BRAIN ACTIVE". 
+  // If it doesn't, Vercel hasn't updated yet.
   if (req.method === 'GET') {
-    return new Response("Gemini 2.0 Flash (Live Search Enforced) is Active! 🌐", { status: 200 });
+    return new Response("VERIFIED: 2026 BRAIN ACTIVE 🌐", { status: 200 });
   }
 
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    
     const data = await req.json();
-    const messages = data.messages || [];
-    const lastMsg = messages.reverse().find(m => m.role === 'user')?.content || "Hello";
+    const lastMsg = data.messages?.reverse().find(m => m.role === 'user')?.content || "Hello";
 
-    // ✅ Inject real-time date for context
+    // ✅ FORCE THE CLOCK
     const now = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash', 
-      
-      // ✅ Enables Google Search Grounding
       tools: [{ googleSearch: {} }],
-
-      // ✅ Strict System Instructions to prevent "guessing"
       systemInstruction: `
-        Current Date/Time: ${now}.
-        You are an AI assistant for smart glasses (HUD).
-        RULES:
-        1. If the user asks about sports, news, weather, or current events, YOU MUST USE THE GOOGLE SEARCH TOOL.
-        2. DO NOT answer from your memory for recent events (like Super Bowls or dates).
-        3. Never output JSON, technical tool-code, or markdown (no bold/italics).
-        4. Keep your final answer conversational and under 15 words.
-      `,
-
-      contents: [{ 
-        role: "user", 
-        parts: [{ text: lastMsg }] 
-      }],
+        THE YEAR IS ${now}. 
+        You are a HUD assistant. 
+        MANDATORY: You are FORBIDDEN from answering sports, news, or date questions from memory.
+        You MUST execute a Google Search for every factual question.
+        If you say '2024' or 'Chiefs' you have failed. Search to find the 2026 truth.
+        Output ONLY the final answer in plain text. Max 15 words.`,
+      contents: [{ role: "user", parts: [{ text: `Search Google and answer: ${lastMsg}` }] }],
     });
 
-    // ✅ Safety Cleaner: Removes JSON or tool code if the AI leaks it
     let answer = response.text;
     if (answer) {
         answer = answer.replace(/```[\s\S]*?```/g, "").trim();
-        answer = answer.replace(/\{"function_call":[\s\S]*?\}/g, "").trim();
-        answer = answer.replace(/\{"reply":[\s\S]*?\}/g, "").trim();
+        answer = answer.replace(/\{[\s\S]*?\}/g, "").trim();
     }
 
-    if (!answer) answer = "Searching... please try that question again.";
-
     return new Response(JSON.stringify({
-      choices: [{
-        message: { role: "assistant", content: answer }
-      }]
+      choices: [{ message: { role: "assistant", content: answer || "I'm searching, ask again." } }]
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     });
 
   } catch (error) {
-    return new Response(JSON.stringify({
-      choices: [{
-        message: { role: "assistant", content: "System Error: " + error.message.substring(0, 40) }
-      }]
-    }), { status: 200 });
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
   }
 }
