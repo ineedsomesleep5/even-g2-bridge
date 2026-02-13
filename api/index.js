@@ -5,7 +5,6 @@ export const config = {
 };
 
 export default async function handler(req) {
-  // 1. Pre-flight Checks (CORS)
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
@@ -17,9 +16,8 @@ export default async function handler(req) {
     });
   }
 
-  // 2. Health Check
   if (req.method === 'GET') {
-    return new Response("Gemini 2.0 Flash (Connected to Web) is Live! 🌐", { status: 200 });
+    return new Response("Gemini 2.0 Flash (Search Enforced) is Live! 🔍", { status: 200 });
   }
 
   try {
@@ -29,31 +27,30 @@ export default async function handler(req) {
     const messages = data.messages || [];
     const lastMsg = messages.reverse().find(m => m.role === 'user')?.content || "Hello";
 
-    // Get current date for context
+    // Get current date
     const now = new Date().toLocaleString("en-US", { timeZone: "America/Chicago" });
 
-    // 3. Ask Gemini WITH Google Search Tool
     const response = await ai.models.generateContent({
       model: 'gemini-2.0-flash', 
       
-      // ✅ THIS IS THE MAGIC LINE that gives it web access:
+      // ✅ TOOL ENABLED:
       tools: [{ googleSearch: {} }],
 
       contents: [{ 
         role: "user", 
         parts: [{ 
-          text: `System: Current Date is ${now}.
-                 You are an AI assistant for smart glasses (HUD).
-                 If the user asks about current events, USE SEARCH to verify.
-                 Keep your answer extremely concise, short, and conversational. 
-                 Do not use markdown formatting. 
-                 Max 2 sentences.
+          // ✅ PROMPT UPDATED: We force it to verify facts
+          text: `System: Current Date/Time is ${now}.
+                 You are a HUD assistant.
+                 CRITICAL RULE: If the user asks about sports, news, or recent events, you MUST use the 'googleSearch' tool. 
+                 DO NOT guess. DO NOT answer from memory. SEARCH FIRST.
+                 
+                 After searching, give a extremely concise answer (max 15 words).
                  User asks: ${lastMsg}` 
         }] 
       }],
     });
 
-    // 4. Send Response
     const answer = response.text; 
 
     return new Response(JSON.stringify({
